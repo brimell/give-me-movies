@@ -75,13 +75,14 @@ for i in range(0, len(df)):
 print(df)
 
 # Write to CSV if it doesn't exist
-if not os.path.exists("data/processed/lb_tmdb.csv"):
+if not os.path.exists("data/processed"):
     os.mkdir("data/processed")
-    df.to_csv("data/processed/lb_tmdb.csv", header=True, index=False)
+if not os.path.exists("data/processed/ratings_tmdb.csv"):
+    df.to_csv("data/processed/ratings_tmdb.csv", header=True, index=False)
 else:
     # For Update Run:
-    df.to_csv("data/processed/lb_tmdb_newentries.csv", header=True, index=False)
-    df_prev = pd.read_csv("data/processed/lb_tmdb.csv")
+    df.to_csv("data/processed/ratings_tmdb_newentries.csv", header=True, index=False)
+    df_prev = pd.read_csv("data/processed/ratings_tmdb.csv")
     api_results = pd.concat([df_prev, df], ignore_index=True)
     api_results.sort_values(by="Date", inplace=True)
-    api_results.to_csv("data/processed/lb_tmdb.csv", header=True, index=False)
+    api_results.to_csv("data/processed/ratings_tmdb.csv", header=True, index=False)
