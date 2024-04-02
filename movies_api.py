@@ -9,11 +9,7 @@ load_dotenv()
 API_key = os.getenv("API_KEY")
 
 # Read in data
-df = pd.read_csv("data/watched.csv")
-
-# For Update Run: Change date to last script execution
-df = df[(df["Date"] > "2023-11-17")]
-
+df = pd.read_csv("data/diary.csv")
 
 # Drop Letterboxd URI
 df.drop(["Letterboxd URI"], axis=1, inplace=True)
