@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import re
-from sklearn.utils import _to_object_array
 
 #Read in data
 df = pd.read_csv('data/processed/ratings_tmdb.csv')
@@ -14,9 +13,23 @@ reviews = pd.read_csv('data/reviews.csv')
 
 #Ratings and Revews join on Name and Date
 df = df.merge(ratings, on=['Date', 'Name'],  how='left')
-df.drop(['Year_y','Letterboxd URI'], axis=1, inplace=True)
+# Drop columns that exist after the first merge
+columns_to_drop = []
+if 'Year_y' in df.columns:
+    columns_to_drop.append('Year_y')
+if 'Letterboxd URI' in df.columns:
+    columns_to_drop.append('Letterboxd URI')
+if columns_to_drop:
+    df.drop(columns_to_drop, axis=1, inplace=True)
+
 df = df.merge(reviews, on=['Date', 'Name'],  how='left')
-df.drop(['Rating_y','Letterboxd URI','Year','Rewatch','Tags','Watched Date'], axis=1, inplace=True)
+# Drop columns that exist after the second merge
+columns_to_drop = []
+for col in ['Rating_y', 'Letterboxd URI', 'Year', 'Rewatch', 'Tags', 'Watched Date']:
+    if col in df.columns:
+        columns_to_drop.append(col)
+if columns_to_drop:
+    df.drop(columns_to_drop, axis=1, inplace=True)
 
 
 #Delete reviews and ratings
@@ -70,62 +83,72 @@ df.rename(columns={'count': 'Weekly_Movie_Count'}, inplace=True)
 
 ###############  GENRE SECTION ###############
 
-#Remove TV Movie and Family Genres
-df.genres = df.genres.str.replace('{\'id\': 10751, \'name\': \'Family\'},','')
-df.genres = df.genres.str.replace('{\'id\': 10770, \'name\': \'TV Movie\'},','')
-df.genres = df.genres.str.replace('{\'id\': 10751, \'name\': \'Family\'}','')
-df.genres = df.genres.str.replace('{\'id\': 10770, \'name\': \'TV Movie\'}','')
+#Debug: Check genres before processing
+print("Sample genres before processing:")
+print(df['genres'].head())
 
-
-#Remove extra charecters from genre strings 
-df['genres'].replace(to_replace='[0-9]+', value='',inplace=True,regex=True)
-df['genres'].replace(to_replace='\{\'id\'\: \, \'name\'\:', value='',inplace=True,regex=True)
-df['genres'].replace(to_replace='\}', value='',inplace=True,regex=True)
-df['genres'].replace(to_replace=' ', value='',inplace=True,regex=True)
-df['genres'].replace(to_replace='\,\]', value=']',inplace=True,regex=True)
-
-#If no genre, replace with 'none'
-df['genres'] = np.where(df['genres']=='[]','[none]',df['genres'])
-
-
-#Get a list of all the unique genres
-vals = pd.Series(df['genres']).tolist()
-vals = str(vals)
-vals = vals.replace('\"','')
-vals = vals.replace('\'','')
-vals = vals.replace('[','')
-vals = vals.replace(']','')
-vals = vals.replace(' ','')
-vals = vals.split(",")
-
-unique_genres = []
-for x in vals:
-    if x not in unique_genres:
-            unique_genres.append(x)
-
-
-#For each genre, if that genre appears in the list of genres for a given movie True else False
-for col in unique_genres:
-    df[col] = df['genres'].apply(lambda x: col in x)
-
-#Convert them all to Boolean 0s and 1s
-df[unique_genres] = df[unique_genres].apply(lambda x: x.astype('int'))
-
-
-#Create new romcom genre column 
-df['Rom_Com'] = np.where(((df['Romance']==1) & (df['Comedy']==1)),1,0)
-df.loc[((df['Romance']==1) & (df['Rom_Com']==1)),'Romance'] = 0
-df.loc[((df['Comedy']==1) & (df['Rom_Com']==1)),'Comedy'] = 0
-
-#Rename ScienceFiction
-df.rename(columns={'ScienceFiction':'Sci_Fi'}, inplace=True)
-
-#Drop the none and genre columns 
-if 'none' in df.columns:
-    df.drop(['none'], axis=1, inplace=True)
-
-if 'genres' in df.columns:
+# Check if genres are populated (not all "blank")
+if df['genres'].nunique() == 1 and df['genres'].iloc[0] == 'blank':
+    print("Warning: Genres are not populated (all showing as 'blank'). Skipping genre processing.")
+    print("You may need to run movies_api.py first to populate genre data from TMDB API.")
+    # Just drop the genres column and continue
     df.drop(['genres'], axis=1, inplace=True)
+else:
+    #Remove TV Movie and Family Genres
+    df.genres = df.genres.str.replace('{\'id\': 10751, \'name\': \'Family\'},','')
+    df.genres = df.genres.str.replace('{\'id\': 10770, \'name\': \'TV Movie\'},','')
+    df.genres = df.genres.str.replace('{\'id\': 10751, \'name\': \'Family\'}','')
+    df.genres = df.genres.str.replace('{\'id\': 10770, \'name\': \'TV Movie\'}','')
+
+    #Remove extra charecters from genre strings 
+    df['genres'] = df['genres'].replace(to_replace='[0-9]+', value='',regex=True)
+    df['genres'] = df['genres'].replace(to_replace=r"\{'id'\: \, 'name'\:", value='',regex=True)
+    df['genres'] = df['genres'].replace(to_replace=r'\}', value='',regex=True)
+    df['genres'] = df['genres'].replace(to_replace=' ', value='',regex=True)
+    df['genres'] = df['genres'].replace(to_replace=r'\,\]', value=']',regex=True)
+
+    #If no genre, replace with 'none'
+    df['genres'] = np.where(df['genres']=='[]','[none]',df['genres'])
+
+    #Get a list of all the unique genres
+    vals = pd.Series(df['genres']).tolist()
+    vals = str(vals)
+    vals = vals.replace('\"','')
+    vals = vals.replace('\'','')
+    vals = vals.replace('[','')
+    vals = vals.replace(']','')
+    vals = vals.replace(' ','')
+    vals = vals.split(",")
+
+    unique_genres = []
+    for x in vals:
+        if x not in unique_genres:
+                unique_genres.append(x)
+
+    #For each genre, if that genre appears in the list of genres for a given movie True else False
+    print(f"Unique genres found: {unique_genres}")
+    for col in unique_genres:
+        df[col] = df['genres'].apply(lambda x: col in x)
+
+    #Convert them all to Boolean 0s and 1s
+    df[unique_genres] = df[unique_genres].apply(lambda x: x.astype('int'))
+
+    #Create new romcom genre column (only if Romance and Comedy columns exist)
+    if 'Romance' in df.columns and 'Comedy' in df.columns:
+        df['Rom_Com'] = np.where(((df['Romance']==1) & (df['Comedy']==1)),1,0)
+        df.loc[((df['Romance']==1) & (df['Rom_Com']==1)),'Romance'] = 0
+        df.loc[((df['Comedy']==1) & (df['Rom_Com']==1)),'Comedy'] = 0
+
+    #Rename ScienceFiction (only if it exists)
+    if 'ScienceFiction' in df.columns:
+        df.rename(columns={'ScienceFiction':'Sci_Fi'}, inplace=True)
+
+    #Drop the none and genre columns 
+    if 'none' in df.columns:
+        df.drop(['none'], axis=1, inplace=True)
+
+    if 'genres' in df.columns:
+        df.drop(['genres'], axis=1, inplace=True)
 
 #Convert language column to boolean for whether language is English
 df['original_language'] = np.where(df['original_language']=='en',1,0)

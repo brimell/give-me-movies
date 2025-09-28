@@ -5,20 +5,76 @@ from sklearn.metrics.pairwise import cosine_similarity
 
 print("Loading datasets...")
 ratings = pd.read_csv('data/ratings_export.csv')
-movies = pd.read_csv('data/movie_data.csv', on_bad_lines='skip')
+
+# Try different approaches to read the problematic CSV file
+try:
+    # First attempt with more robust parsing options
+    movies = pd.read_csv('data/movie_data.csv', 
+                        on_bad_lines='skip',
+                        quoting=1,  # QUOTE_ALL
+                        engine='python')  # Use python engine for more flexibility
+except Exception as e:
+    print(f"First attempt failed: {e}")
+    try:
+        # Second attempt with different settings
+        movies = pd.read_csv('data/movie_data.csv', 
+                            on_bad_lines='skip',
+                            sep=',',
+                            engine='python',
+                            encoding='utf-8',
+                            quotechar='"',
+                            escapechar='\\')
+    except Exception as e2:
+        print(f"Second attempt failed: {e2}")
+        # Third attempt reading in chunks
+        chunk_list = []
+        chunk_size = 10000
+        try:
+            for chunk in pd.read_csv('data/movie_data.csv', 
+                                   chunksize=chunk_size,
+                                   on_bad_lines='skip',
+                                   engine='python'):
+                chunk_list.append(chunk)
+            movies = pd.concat(chunk_list, ignore_index=True)
+        except Exception as e3:
+            print(f"All attempts failed: {e3}")
+            print("Loading a smaller sample of the data...")
+            # Load only first 10000 rows as fallback
+            movies = pd.read_csv('data/movie_data.csv', 
+                               nrows=10000,
+                               on_bad_lines='skip',
+                               engine='python')
+
 my_ratings = pd.read_csv('data/processed/ratings_tmdb_cleaned.csv')
 
 print("Merging datasets...")
 user_ratings = pd.merge(ratings, movies, left_on='movie_id', right_on='movie_id')
 
 print("Merging your ratings with movie data...")
+print(f"My ratings shape: {my_ratings.shape}")
+print(f"Movies shape: {movies.shape}")
+
+# Convert id column to int (it contains TMDB IDs as floats)
+my_ratings['id'] = my_ratings['id'].astype(int)
+
+# Handle NaN values in tmdb_id and convert to int
+movies = movies.dropna(subset=['tmdb_id'])  # Remove rows with NaN tmdb_id
+movies['tmdb_id'] = movies['tmdb_id'].astype(int)
+
+print(f"Movies shape after dropping NaN tmdb_ids: {movies.shape}")
+print(f"Sample my_ratings ids: {my_ratings['id'].head().tolist()}")
+print(f"Sample movies tmdb_ids: {movies['tmdb_id'].head().tolist()}")
+
 merged = my_ratings.merge(movies[['tmdb_id', 'movie_title', 'year_released']], 
                           left_on='id',  
                           right_on='tmdb_id', 
                           how='inner')
+print(f"Merged shape after join: {merged.shape}")
 merged = merged[merged['Rating'] != 0]
+print(f"Merged shape after removing 0 ratings: {merged.shape}")
 my_ratings_updated = merged[['tmdb_id', 'Rating']].copy()
 my_ratings_updated['user_id'] = "brimell"
+print(f"My ratings updated shape: {my_ratings_updated.shape}")
 
 print("Preparing data for similarity computation...")
 tmdb_id_to_idx = {tmdb_id: i for i, tmdb_id in enumerate(user_ratings['tmdb_id'].unique())}
